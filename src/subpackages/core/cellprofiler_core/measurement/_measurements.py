@@ -1481,7 +1481,11 @@ class Measurements:
                 path = path[2:]  # Empty URI authority; retain the root slash.
             elif path.startswith("//localhost/"):
                 path = path[11:]
-            full_name = urllib.parse.unquote(path)
+            full_name = urllib.parse.unquote(
+                path,
+                encoding=sys.getfilesystemencoding(),
+                errors=sys.getfilesystemencodeerrors(),
+            )
 
         def normalize_separators(path):
             if source_separator == "\\":
@@ -1489,9 +1493,9 @@ class Measurements:
             return path.replace(source_separator, os.path.sep)
 
         full_name = normalize_separators(full_name)
-        full_name_c = full_name if d[K_CASE_SENSITIVE] else full_name.lower()
         mapped = False
         for local_directory, remote_directory in d[K_PATH_MAPPINGS]:
+            full_name_c = full_name if d[K_CASE_SENSITIVE] else full_name.lower()
             local_directory = normalize_separators(local_directory)
             if d[K_CASE_SENSITIVE]:
                 if full_name_c.startswith(local_directory):

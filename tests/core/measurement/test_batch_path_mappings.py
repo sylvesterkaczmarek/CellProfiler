@@ -278,3 +278,45 @@ def test_saved_windows_metadata_after_reopen(tmp_path, target, monkeypatch):
         ] == [[LOCAL_ROOT, target.root]]
     finally:
         loaded.close()
+
+
+@pytest.mark.skipif(
+    os.name == "nt",
+    reason="Arbitrary POSIX filename bytes have no Windows filename equivalent",
+)
+def test_posix_undecodable_filename_bytes(measurements, tmp_path):
+    filename = pathlib.Path(os.fsdecode(os.fsencode(tmp_path) + b"/image\xff.tif"))
+    set_mappings(measurements, [("/source", str(tmp_path))], windows=False)
+    result = measurements.alter_url_post_create_batch("file:/source/image%FF.tif")
+    assert result == "file:" + urllib.request.pathname2url(str(filename))
+    mapped_path = pathlib.Path(urllib.request.url2pathname(result[5:]))
+    assert os.fsencode(mapped_path) == os.fsencode(tmp_path) + b"/image\xff.tif"
+
+
+@pytest.mark.parametrize(
+    "windows", [False, True], ids=["posix-source", "windows-source"]
+)
+@pytest.mark.parametrize("rule_type", ["overlap", "cascade"])
+def test_ordered_rules_match_current_path(measurements, target, windows, rule_type):
+    source_root = LOCAL_ROOT if windows else "/source/images"
+    source_separator = "\\" if windows else "/"
+    source_path = (
+        source_root + source_separator + "sub" + source_separator + "image.tif"
+    )
+    encode = nturl2path.pathname2url if windows else urllib.parse.quote
+    staging_root = target.path.join(target.root, "stage")
+    final_root = target.path.join(target.root, "final")
+    second_source = (
+        source_root + source_separator + "sub"
+        if rule_type == "overlap"
+        else staging_root
+    )
+    set_mappings(
+        measurements,
+        [(source_root, staging_root), (second_source, final_root)],
+        windows=windows,
+    )
+    result = measurements.alter_url_post_create_batch("file:" + encode(source_path))
+    expected_root = staging_root if rule_type == "overlap" else final_root
+    expected_path = target.path.join(expected_root, "sub", "image.tif")
+    assert result == "file:" + target.encode(expected_path)
