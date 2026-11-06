@@ -1,0 +1,42 @@
+name: Validate cross-platform batch paths
+on:
+  push:
+    branches: [validation/batch-paths-5235-20261106]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  paths:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ['3.12', '3.14']
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install isolated test environment
+        run: |
+          python -m pip install uv
+          uv venv --python python .venv
+          uv pip install --python .venv --no-deps -r .validation/cp5235/requirements.txt -e src/subpackages/library -e src/subpackages/core -e src/subpackages/centriole -e src/frontend
+      - name: Verify batch-path regression tests
+        shell: bash
+        run: |
+          if [ -f .venv/Scripts/python.exe ]; then PY=.venv/Scripts/python.exe; else PY=.venv/bin/python; fi
+          "$PY" -VV
+          "$PY" -m pytest tests/core/measurement/test_batch_path_mappings.py --timeout=60 --color=no -o addopts='' -q --junitxml=platform-paths.xml
+      - name: Retain test evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: batch-paths-${{ matrix.os }}-${{ matrix.python }}
+          retention-days: 5
+          path: platform-paths.xml
